@@ -185,6 +185,10 @@ export default function AdminPage() {
       <button type="button" className="logout-btn" onClick={handleLogout}>
         Abmelden
       </button>
+
+      <p className="footer-link">
+        <a href="/">Bestellliste</a> · <a href="/impressum">Impressum</a>
+      </p>
     </main>
   );
 }

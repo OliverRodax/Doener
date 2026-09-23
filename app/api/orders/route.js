@@ -7,13 +7,10 @@ export const runtime = 'nodejs';
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const day = searchParams.get('day') || todayBerlin();
-  const token = searchParams.get('token') || '';
 
   const db = getDb();
   const rows = db
-    .prepare(
-      'SELECT id, name, order_text, restaurant, token, created_at FROM orders WHERE day = ? ORDER BY created_at ASC'
-    )
+    .prepare('SELECT id, name, order_text, restaurant, created_at FROM orders WHERE day = ? ORDER BY created_at ASC')
     .all(day);
 
   const orders = rows.map((r) => ({
@@ -22,7 +19,6 @@ export async function GET(request) {
     order: r.order_text,
     restaurant: r.restaurant,
     created_at: r.created_at,
-    mine: token !== '' && r.token === token,
   }));
 
   return NextResponse.json({ day, orders });
@@ -38,11 +34,10 @@ export async function POST(request) {
 
   const name = String(body.name || '').trim().slice(0, 60);
   const order = String(body.order || '').trim().slice(0, 200);
-  const token = String(body.token || '').trim().slice(0, 100);
   const restaurant = String(body.restaurant || '').trim();
 
-  if (!name || !order || !token) {
-    return NextResponse.json({ error: 'Name, Bestellung und Token sind erforderlich.' }, { status: 400 });
+  if (!name || !order) {
+    return NextResponse.json({ error: 'Name und Bestellung sind erforderlich.' }, { status: 400 });
   }
   if (!RESTAURANT_NAMES.includes(restaurant)) {
     return NextResponse.json({ error: 'Bitte ein gültiges Lokal auswählen.' }, { status: 400 });
@@ -52,12 +47,14 @@ export async function POST(request) {
   const createdAt = new Date().toISOString();
 
   const db = getDb();
+  // token stays for schema compatibility with the admin delete flow's older
+  // rows — no longer used to grant delete rights (deletion is admin-only now).
   const info = db
     .prepare('INSERT INTO orders (day, name, order_text, restaurant, token, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(day, name, order, restaurant, token, createdAt);
+    .run(day, name, order, restaurant, '', createdAt);
 
   return NextResponse.json(
-    { id: info.lastInsertRowid, day, name, order, restaurant, created_at: createdAt, mine: true },
+    { id: info.lastInsertRowid, day, name, order, restaurant, created_at: createdAt },
     { status: 201 }
   );
 }

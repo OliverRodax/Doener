@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ORDER_DEADLINES } from '../lib/deadlines';
 import { RESTAURANTS } from '../lib/restaurants';
 
@@ -19,16 +19,6 @@ function berlinTimeHHMM(date) {
   }).format(date);
 }
 
-function getOrCreateToken() {
-  if (typeof window === 'undefined') return '';
-  let token = localStorage.getItem('doener_token');
-  if (!token) {
-    token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('doener_token', token);
-  }
-  return token;
-}
-
 export default function Page() {
   const [orders, setOrders] = useState([]);
   const [day, setDay] = useState('');
@@ -38,13 +28,11 @@ export default function Page() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [now, setNow] = useState(null);
-  const tokenRef = useRef('');
+  const [filter, setFilter] = useState('');
 
   async function load() {
     try {
-      const res = await fetch(`/api/orders?token=${encodeURIComponent(tokenRef.current)}`, {
-        cache: 'no-store',
-      });
+      const res = await fetch('/api/orders', { cache: 'no-store' });
       const data = await res.json();
       setOrders(data.orders);
       setDay(data.day);
@@ -55,7 +43,6 @@ export default function Page() {
   }
 
   useEffect(() => {
-    tokenRef.current = getOrCreateToken();
     const savedName = localStorage.getItem('doener_name');
     if (savedName) setName(savedName);
     const savedRestaurant = localStorage.getItem('doener_restaurant');
@@ -66,7 +53,6 @@ export default function Page() {
     load();
     const id = setInterval(load, 4000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e) {
@@ -81,7 +67,7 @@ export default function Page() {
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, order, restaurant, token: tokenRef.current }),
+        body: JSON.stringify({ name, order, restaurant }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -95,17 +81,6 @@ export default function Page() {
       setError(err.message);
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleDelete(id) {
-    try {
-      await fetch(`/api/orders/${id}?token=${encodeURIComponent(tokenRef.current)}`, {
-        method: 'DELETE',
-      });
-      await load();
-    } catch {
-      // ignore — list refresh will self-correct on next poll
     }
   }
 
@@ -127,6 +102,8 @@ export default function Page() {
     count: orders.filter((o) => o.restaurant === r.name).length,
   })).sort((a, b) => b.count - a.count);
   const maxCount = Math.max(1, ...restaurantCounts.map((r) => r.count));
+
+  const visibleOrders = filter ? orders.filter((o) => o.restaurant === filter) : orders;
 
   return (
     <main className="page">
@@ -173,12 +150,42 @@ export default function Page() {
         </section>
       )}
 
+      {orders.length > 0 && (
+        <ul className="filter-list">
+          <li>
+            <button
+              type="button"
+              className={`filter-chip${filter === '' ? ' active' : ''}`}
+              onClick={() => setFilter('')}
+            >
+              Alle
+            </button>
+          </li>
+          {RESTAURANTS.map((r) => (
+            <li key={r.name}>
+              <button
+                type="button"
+                className={`filter-chip${filter === r.name ? ' active' : ''}`}
+                style={filter === r.name ? { background: r.color, borderColor: r.color } : undefined}
+                onClick={() => setFilter(filter === r.name ? '' : r.name)}
+              >
+                {r.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <section className="list">
-        {orders.length === 0 ? (
-          <p className="empty">Noch niemand hat heute bestellt. Sei die erste Person!</p>
+        {visibleOrders.length === 0 ? (
+          <p className="empty">
+            {orders.length === 0
+              ? 'Noch niemand hat heute bestellt. Sei die erste Person!'
+              : 'Niemand hat heute bei diesem Lokal bestellt.'}
+          </p>
         ) : (
           <ul>
-            {orders.map((o) => (
+            {visibleOrders.map((o) => (
               <li key={o.id} className="order-row">
                 <div className="order-info">
                   <div className="order-name-row">
@@ -192,22 +199,12 @@ export default function Page() {
                   </div>
                   <span className="order-text">{o.order}</span>
                 </div>
-                {o.mine && (
-                  <button
-                    type="button"
-                    className="delete-btn"
-                    onClick={() => handleDelete(o.id)}
-                    aria-label={`Bestellung von ${o.name} löschen`}
-                  >
-                    ✕
-                  </button>
-                )}
               </li>
             ))}
           </ul>
         )}
         <p className="count">
-          {orders.length} {orders.length === 1 ? 'Bestellung' : 'Bestellungen'}
+          {visibleOrders.length} {visibleOrders.length === 1 ? 'Bestellung' : 'Bestellungen'}
         </p>
       </section>
 
@@ -260,7 +257,7 @@ export default function Page() {
       </form>
 
       <p className="footer-link">
-        <a href="/admin">Admin</a>
+        <a href="/admin">Admin</a> · <a href="/impressum">Impressum</a>
       </p>
     </main>
   );
